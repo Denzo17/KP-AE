@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Формирование счёта (КП)</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="topbar">
+  <h1>Формирование счёта</h1>
+  <div class="topbar__actions">
+    <button type="button" id="btn-list" class="btn btn--ghost">Сохранённые счета</button>
+    <button type="button" id="btn-new" class="btn btn--ghost">Новый счёт</button>
+  </div>
+</header>
+
+<main class="layout">
+  <form id="form" class="form">
+    <section class="card">
+      <h2>Документ</h2>
+      <div class="grid">
+        <label>Компания
+          <select name="company" id="company"></select>
+        </label>
+        <label>Номер счёта
+          <input name="number" placeholder="128">
+        </label>
+        <label>Дата документа
+          <input type="date" name="docDate" id="docDate">
+        </label>
+        <label>Основание
+          <input name="basis" placeholder="Договор, спецификация">
+        </label>
+      </div>
+      <p class="hint" id="company-hint"></p>
+    </section>
+
+    <section class="card">
+      <h2>Клиент</h2>
+      <div class="grid">
+        <label class="span2">Наименование
+          <input name="client.name" required placeholder="ООО «Ромашка»">
+        </label>
+        <label>ИНН
+          <input name="client.inn">
+        </label>
+        <label>Контактное лицо
+          <input name="client.contact">
+        </label>
+        <label>Телефон
+          <input name="client.phone">
+        </label>
+        <label>E-mail
+          <input name="client.email">
+        </label>
+        <label class="span2">Адрес
+          <input name="client.address">
+        </label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Условия</h2>
+      <div class="grid">
+        <label>Условия оплаты
+          <select name="paymentTerms" id="paymentTerms"></select>
+        </label>
+        <label id="paymentCustomWrap" hidden>Свой вариант оплаты
+          <input name="paymentTermsCustom">
+        </label>
+        <label>Срок поставки (общий)
+          <input name="deliveryTime" placeholder="10–12 недель">
+        </label>
+        <label>Оферта действует, дней
+          <input type="number" name="offerValidDays" value="15" min="0">
+        </label>
+        <label>Условия поставки
+          <select name="deliveryTerms" id="deliveryTerms"></select>
+        </label>
+        <label id="deliveryCustomWrap" hidden>Свой вариант поставки
+          <input name="deliveryTermsCustom">
+        </label>
+        <label>Гарантия, мес.
+          <input type="number" name="warrantyMonths" value="12" min="0" step="1">
+        </label>
+        <label>Ставка НДС, %
+          <select name="vatRate" id="vatRate"></select>
+        </label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Валюта и наценка</h2>
+      <div class="grid">
+        <label>Валюта закупа
+          <select name="currency" id="currency"></select>
+        </label>
+        <label>Курс к рублю
+          <input name="rate" id="rate" value="1" inputmode="decimal">
+        </label>
+        <label class="span2 inline">
+          <button type="button" class="btn btn--ghost" id="btn-add-currency">+ Добавить валюту</button>
+        </label>
+        <label>Наценка применяется
+          <select name="markupMode" id="markupMode">
+            <option value="all">На все позиции</option>
+            <option value="individual">Индивидуально по позициям</option>
+          </select>
+        </label>
+        <label>Наценка (коэффициент)
+          <input name="markup" id="markup" inputmode="decimal">
+        </label>
+      </div>
+      <p class="hint" id="markup-hint"></p>
+    </section>
+
+    <section class="card">
+      <div class="card__head">
+        <h2>Номенклатура</h2>
+        <div>
+          <button type="button" class="btn btn--ghost" id="btn-import">Импорт CSV</button>
+          <button type="button" class="btn" id="btn-add-item">+ Позиция</button>
+        </div>
+      </div>
+      <input type="file" id="import-file" accept=".csv,text/csv" hidden>
+      <div class="items" id="items"></div>
+      <datalist id="catalog-list"></datalist>
+    </section>
+
+    <section class="card">
+      <h2>Контакты и примечание</h2>
+      <div class="grid">
+        <label class="span2">Контакты
+          <input name="contacts" placeholder="Менеджер, телефон, почта">
+        </label>
+        <label class="span2">Примечание
+          <textarea name="notes" rows="3"></textarea>
+        </label>
+      </div>
+    </section>
+  </form>
+
+  <aside class="side">
+    <div class="card sticky">
+      <h2>Расчёт</h2>
+      <div id="totals" class="totals"></div>
+      <div id="errors" class="errors"></div>
+      <button type="button" class="btn btn--primary btn--wide" id="btn-save">Сформировать счёт</button>
+      <div id="result" class="result"></div>
+    </div>
+  </aside>
+</main>
+
+<div class="modal" id="modal" hidden>
+  <div class="modal__box">
+    <div class="modal__head">
+      <h2 id="modal-title">Сохранённые счета</h2>
+      <button type="button" class="btn btn--ghost" id="modal-close">Закрыть</button>
+    </div>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>

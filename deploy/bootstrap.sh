@@ -3,7 +3,8 @@
 # Запускать от root. Скрипт идемпотентный — повторный запуск безопасен.
 set -euo pipefail
 
-REPO="${REPO:-git@github.com:Denzo17/KP-AE.git}"
+REPO="${REPO:-https://github.com/Denzo17/KP-AE.git}"
+BRANCH="${BRANCH:-claude/kp-formation-criteria-w6sdam}"
 APP_DIR=/opt/kp-ae
 DATA_DIR=/var/lib/kp-ae
 ENV_FILE=/etc/kp-ae.env
@@ -97,7 +98,11 @@ chown -R kpae:kpae "$DATA_DIR"
 
 say "6/8 Код"
 if [ ! -d "$APP_DIR/.git" ]; then
-  # Приватный репозиторий: нужен deploy key. Генерируем и просим добавить.
+  # Публичный репозиторий по HTTPS: авторизация не нужна вовсе.
+  if [ "${REPO#https://}" != "$REPO" ]; then
+    git clone -b "$BRANCH" "$REPO" "$APP_DIR"
+  else
+  # Приватный репозиторий по SSH: нужен deploy key. Генерируем и просим добавить.
   if [ ! -f /root/.ssh/kp_ae_deploy ]; then
     mkdir -p /root/.ssh
     ssh-keygen -t ed25519 -N '' -f /root/.ssh/kp_ae_deploy -C 'kp-ae-deploy' >/dev/null
@@ -118,7 +123,8 @@ EOF
     echo "После этого запусти скрипт ещё раз — он продолжит с этого места."
     exit 0
   fi
-  git clone "$REPO" "$APP_DIR"
+    git clone -b "$BRANCH" "$REPO" "$APP_DIR"
+  fi
 fi
 
 cd "$APP_DIR"

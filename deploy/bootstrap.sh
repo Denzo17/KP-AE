@@ -4,7 +4,7 @@
 set -euo pipefail
 
 REPO="${REPO:-https://github.com/Denzo17/KP-AE.git}"
-BRANCH="${BRANCH:-claude/kp-formation-criteria-w6sdam}"
+BRANCH="${BRANCH:-main}"
 APP_DIR=/opt/kp-ae
 DATA_DIR=/var/lib/kp-ae
 ENV_FILE=/etc/kp-ae.env

@@ -3,6 +3,8 @@
 var ref = { companies: [], paymentTerms: [], deliveryTerms: [], vatRates: [], currencies: [], catalog: [] };
 var editingId = null;
 var previewTimer = null;
+// Номер, поправленный руками, автоподстановка больше не трогает.
+var numberTouched = false;
 
 var $ = function (sel, root) { return (root || document).querySelector(sel); };
 var money = new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -77,6 +79,9 @@ function onCompanyChange() {
   var company = currentCompany();
   if (!company) { return; }
   $('#vatRate').value = String(company.vatRate);
+  // Нумерация сквозная в пределах компании, поэтому при смене поставщика
+  // номер пересчитывается — если менеджер не вписал свой.
+  fillNextNumber();
   $('#company-hint').textContent =
     'Коэффициент ' + company.coefficient + ', НДС ' + company.vatRate + '% (в том числе). ' +
     (company.includeLogistics
@@ -107,6 +112,19 @@ function onCurrencyChange() {
   rate.disabled = isRub;
   if (isRub) { rate.value = '1'; }
   schedulePreview();
+}
+
+function fillNextNumber() {
+  if (numberTouched || editingId) {
+    return;
+  }
+  fetch('/api/next-number?company=' + encodeURIComponent($('#company').value))
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      if (!numberTouched && !editingId) {
+        $('#number').value = data.number;
+      }
+    });
 }
 
 // --- Позиции ------------------------------------------------------------
@@ -325,6 +343,7 @@ function loadForEdit(id) {
   fetch('/api/invoices/' + id).then(function (r) { return r.json(); }).then(function (data) {
     var inv = data.invoice;
     editingId = inv.id;
+    numberTouched = true;
     Array.prototype.forEach.call(document.querySelectorAll('#form [name]'), function (el) {
       var path = el.getAttribute('name').split('.');
       var value = path.length === 2 ? (inv[path[0]] || {})[path[1]] : inv[path[0]];
@@ -344,6 +363,7 @@ function loadForEdit(id) {
 
 function resetForm() {
   editingId = null;
+  numberTouched = false;
   $('#form').reset();
   $('#items').innerHTML = '';
   $('#result').innerHTML = '';
@@ -449,6 +469,7 @@ document.addEventListener('DOMContentLoaded', function () {
     schedulePreview();
   });
 
+  $('#number').addEventListener('input', function () { numberTouched = true; });
   $('#form').addEventListener('input', schedulePreview);
   $('#form').addEventListener('submit', function (ev) { ev.preventDefault(); save(); });
 

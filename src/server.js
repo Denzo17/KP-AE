@@ -10,6 +10,7 @@ import { renderInvoice } from './render.js';
 import { htmlToPdf, closeBrowser } from './pdf.js';
 import { saveInvoice, loadInvoice, updateInvoice, listInvoices } from './storage.js';
 import { listItems, rememberItems, importItems, parseCatalogCsv, listCurrencies, addCurrency } from './catalog.js';
+import { nextNumber } from './numbering.js';
 import { bitrix } from './bitrix.js';
 
 const app = express();
@@ -43,6 +44,10 @@ app.get('/api/reference', asyncRoute(async (req, res) => {
     catalog: await listItems(),
     bitrixEnabled: bitrix.enabled
   });
+}));
+
+app.get('/api/next-number', asyncRoute(async (req, res) => {
+  res.json({ number: await nextNumber(req.query.company, req.query.year) });
 }));
 
 app.post('/api/currencies', asyncRoute(async (req, res) => {

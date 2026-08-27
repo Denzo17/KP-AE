@@ -1,4 +1,5 @@
 import { calculate, paymentTerm, deliveryTerm, money, formatDate } from './model.js';
+import { amountInWords } from './amount-in-words.js';
 
 export function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (c) => ({
@@ -93,7 +94,8 @@ export function renderInvoice(invoice) {
   .totals { margin-left: auto; width: 60%; }
   .totals div { display: flex; justify-content: space-between; padding: 3px 0; }
   .totals .grand { font-weight: bold; font-size: 15px; border-top: 1px solid var(--ink); padding-top: 6px; }
-  .summary { margin: 10px 0 20px; font-weight: bold; }
+  .summary { margin: 10px 0 4px; font-weight: bold; }
+  .words { margin-bottom: 20px; font-weight: bold; }
   .conds { border-top: 1px solid var(--line); padding-top: 14px; margin-bottom: 20px; }
   .cond { margin-bottom: 4px; }
   .cond__label { color: var(--muted); }
@@ -169,6 +171,7 @@ export function renderInvoice(invoice) {
     <div class="summary">
       Всего наименований ${r.count}, на сумму ${e(money.format(r.total))} ₽${r.weight ? `, общий вес ${e(money.format(r.weight))} кг` : ''}
     </div>
+    <div class="words">${e(amountInWords(r.total))}</div>
 
     <div class="conds">
       ${conditionRow('Условия оплаты:', paymentLabel(invoice))}

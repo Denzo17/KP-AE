@@ -7,13 +7,38 @@ import {
   PAYMENT_TERMS, DELIVERY_TERMS, VAT_RATES
 } from './model.js';
 import { renderInvoice } from './render.js';
-import { htmlToPdf, closeBrowser } from './pdf.js';
+import { htmlToPdf, closeBrowser, checkChromium } from './pdf.js';
 import { saveInvoice, loadInvoice, updateInvoice, listInvoices } from './storage.js';
 import { listItems, rememberItems, importItems, parseCatalogCsv, listCurrencies, addCurrency } from './catalog.js';
 import { nextNumber } from './numbering.js';
+import { authMiddleware, assertAuthConfigured } from './auth.js';
 import { bitrix } from './bitrix.js';
 
+try {
+  assertAuthConfigured();
+} catch (err) {
+  // Понятное сообщение вместо стектрейса: это ошибка настройки, а не кода.
+  console.error(err.message);
+  process.exit(1);
+}
+
 const app = express();
+// За nginx: без этого req.protocol и адрес клиента в логах будут от прокси.
+app.set('trust proxy', 1);
+app.disable('x-powered-by');
+
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'same-origin');
+  // Счета не должны попадать в поисковую выдачу.
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  next();
+});
+
+// Проверка живости для systemd и nginx — до авторизации.
+app.get('/healthz', (req, res) => res.json({ ok: true }));
+
+app.use(authMiddleware);
 app.use(express.json({ limit: '2mb' }));
 app.use(express.text({ type: 'text/csv', limit: '2mb' }));
 app.use(express.static(fileURLToPath(new URL('../public', import.meta.url))));
@@ -148,6 +173,13 @@ app.use((err, req, res, next) => {
   console.error(err);
   res.status(500).json({ errors: ['Внутренняя ошибка сервера.'] });
 });
+
+// Chromium проверяем на старте, а не на первом счёте: иначе о неверном
+// CHROMIUM_PATH узнаёшь в момент, когда менеджер жмёт «скачать PDF».
+const chromium = await checkChromium();
+if (!chromium.ok) {
+  console.warn(`ВНИМАНИЕ: chromium недоступен (${chromium.reason}). Страницы счетов работают, PDF — нет.`);
+}
 
 const server = app.listen(config.port, () => {
   console.log(`KP-AE слушает ${config.baseUrl} (порт ${config.port})`);

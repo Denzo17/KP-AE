@@ -19,6 +19,16 @@
 - Сумма прописью в печатной форме, со всеми склонениями
   («Одна тысяча», «Две тысячи», «01 копейка»).
 
+## Доступ
+
+Форма и API закрыты паролем (HTTP Basic). **Страница счёта и PDF остаются
+открытыми по ссылке** — её отправляют клиенту, и он ничего не вводит; защита
+ссылки в неподбираемом идентификаторе.
+
+Без `AUTH_PASSWORD` сервис не стартует: иначе на публичном домене список всех
+счетов с клиентами и суммами доступен любому. Для локальной разработки —
+`AUTH_DISABLED=1`.
+
 ## Логика расчёта
 
 Цена за единицу считается так:
@@ -99,18 +109,87 @@ BASE_URL=https://schet.example.ru CHROMIUM_PATH=/usr/bin/chromium npm start
 
 ## Деплой на Beget VPS
 
+Минимум по железу: **2 ГБ RAM** и 10 ГБ диска. Печать держит chromium в
+памяти (~300 МБ вместе с вспомогательными процессами), одновременных печатей
+не больше двух — остальные ждут очереди, чтобы поток запросов не съел память.
+
+### 1. Пакеты
+
 ```bash
-apt install -y nodejs npm chromium
-git clone <репозиторий> /opt/kp-ae && cd /opt/kp-ae
-PUPPETEER_SKIP_DOWNLOAD=true npm install --omit=dev
+# Node 20 LTS — в стандартных репозиториях версия обычно старее, чем нужно
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs nginx chromium
+
+# ОБЯЗАТЕЛЬНО: без этих шрифтов кириллица и знак ₽ в PDF превратятся в квадраты
+sudo apt install -y fonts-liberation fonts-dejavu-core
 ```
 
-Дальше — systemd-юнит с переменными окружения выше и nginx впереди с
-Let's Encrypt. Chromium ставится системный, поэтому `PUPPETEER_SKIP_DOWNLOAD`
-экономит ~150 МБ на каждом деплое.
+Печатная форма набрана Times New Roman, chromium подставляет вместо него
+Liberation Serif, а символ рубля берёт из DejaVu Sans — оба пакета нужны.
+Проверить, что подстановка работает: `fc-match "Times New Roman"`.
 
-`DATA_DIR` лучше вынести за пределы каталога с кодом (например,
-`/var/lib/kp-ae`), чтобы деплой не затирал сохранённые счета.
+Имя пакета с chromium на некоторых сборках — `chromium-browser`. Путь до
+бинарника (`which chromium`) идёт в `CHROMIUM_PATH`.
+
+### 2. Пользователь, код, данные
+
+```bash
+sudo useradd -r -s /usr/sbin/nologin kpae
+sudo git clone https://github.com/Denzo17/KP-AE.git /opt/kp-ae
+cd /opt/kp-ae
+sudo PUPPETEER_SKIP_DOWNLOAD=true npm ci --omit=dev
+
+sudo mkdir -p /var/lib/kp-ae
+sudo chown -R kpae:kpae /var/lib/kp-ae
+```
+
+`PUPPETEER_SKIP_DOWNLOAD` экономит ~150 МБ на каждом деплое: chromium берётся
+системный.
+
+### 3. Настройки
+
+```bash
+sudo cp .env.example /etc/kp-ae.env
+sudo nano /etc/kp-ae.env          # домен в BASE_URL и обязательно AUTH_PASSWORD
+sudo chmod 600 /etc/kp-ae.env
+sudo chown kpae:kpae /etc/kp-ae.env
+```
+
+### 4. Сервис и nginx
+
+```bash
+sudo cp deploy/kp-ae.service /etc/systemd/system/
+sudo systemctl enable --now kp-ae
+sudo systemctl status kp-ae
+
+sudo cp deploy/nginx.conf /etc/nginx/sites-available/kp-ae
+sudo nano /etc/nginx/sites-available/kp-ae     # подставить свой домен
+sudo ln -s /etc/nginx/sites-available/kp-ae /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+
+sudo apt install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d schet.example.ru
+```
+
+### 5. Проверка
+
+```bash
+curl -fsS https://schet.example.ru/healthz        # {"ok":true}
+curl -o /dev/null -w '%{http_code}\n' https://schet.example.ru/   # 401 без пароля
+journalctl -u kp-ae -f
+```
+
+Если в логе есть «chromium недоступен» — проверить `CHROMIUM_PATH`. Страницы
+счетов при этом работают, не печатается только PDF.
+
+### Обновление
+
+```bash
+sudo -u kpae deploy/update.sh
+```
+
+Скрипт подтягивает код, ставит зависимости, прогоняет тесты и перезапускает
+сервис с проверкой живости.
 
 ## Переезд на другой сервер или аккаунт
 

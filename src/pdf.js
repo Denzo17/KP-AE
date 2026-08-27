@@ -16,19 +16,73 @@ function launch() {
 }
 
 async function getBrowser() {
-  if (!browserPromise) {
-    browserPromise = launch();
+  if (browserPromise) {
+    try {
+      const browser = await browserPromise;
+      if (browser.connected) {
+        return browser;
+      }
+    } catch (err) {
+      // Прошлый запуск не удался — пробуем ещё раз, а не отдаём ту же ошибку.
+    }
+    browserPromise = null;
   }
-  let browser = await browserPromise;
-  if (!browser.connected) {
-    // Chromium мог упасть (например, по OOM) — поднимаем заново.
-    browserPromise = launch();
-    browser = await browserPromise;
+
+  browserPromise = launch();
+  try {
+    return await browserPromise;
+  } catch (err) {
+    // Неудачный промис нельзя оставлять в кэше: иначе один сбой (chromium
+    // ещё не установлен, кончилась память) убивает печать до перезапуска.
+    browserPromise = null;
+    throw err;
   }
-  return browser;
+}
+
+// Ссылка на счёт публична, а каждая печать — это вкладка chromium.
+// Без ограничения одновременных печатей поток запросов съедает память VPS,
+// поэтому лишние ждут очереди, а не запускают ещё одну вкладку.
+const MAX_CONCURRENT = 2;
+let active = 0;
+const queue = [];
+
+function acquire() {
+  if (active < MAX_CONCURRENT) {
+    active += 1;
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => queue.push(resolve));
+}
+
+function release() {
+  const next = queue.shift();
+  if (next) {
+    next();
+  } else {
+    active -= 1;
+  }
+}
+
+// Проверка, что chromium вообще запускается — вызывается на старте сервера.
+export async function checkChromium() {
+  try {
+    const browser = await getBrowser();
+    return { ok: true, version: await browser.version() };
+  } catch (err) {
+    return { ok: false, reason: err.message };
+  }
 }
 
 export async function htmlToPdf(html) {
+  await acquire();
+  try {
+    return await printPage(html);
+  } finally {
+    release();
+  }
+}
+
+async function printPage(html) {
   const browser = await getBrowser();
   const page = await browser.newPage();
   try {

@@ -1,0 +1,27 @@
+[Unit]
+Description=KP-AE — формирование счетов
+After=network.target
+
+[Service]
+Type=simple
+User=kpae
+Group=kpae
+WorkingDirectory=/opt/kp-ae
+EnvironmentFile=/etc/kp-ae.env
+ExecStart=/usr/bin/node src/server.js
+Restart=always
+RestartSec=5
+
+# Каталог с кодом только на чтение, писать можно лишь в данные.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/kp-ae
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=kp-ae
+
+[Install]
+WantedBy=multi-user.target

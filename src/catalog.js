@@ -114,14 +114,16 @@ export async function listCurrencies() {
 }
 
 export async function addCurrency(code, label) {
-  const normalized = String(code || '').trim().toUpperCase();
-  if (!normalized) {
+  // Код валюты приходит из формы, поэтому обрезаем: в справочник не должна
+  // попадать строка произвольной длины.
+  const normalized = String(code || '').trim().toUpperCase().slice(0, 8);
+  if (!/^[A-Z]{2,8}$/.test(normalized)) {
     return listCurrencies();
   }
   const data = await read();
   if (!data.currencies.some((c) => c.code === normalized) &&
       !BASE_CURRENCIES.some((c) => c.code === normalized)) {
-    data.currencies.push({ code: normalized, label: String(label || normalized).trim() });
+    data.currencies.push({ code: normalized, label: String(label || normalized).trim().slice(0, 40) });
     await write(data);
   }
   return listCurrencies();

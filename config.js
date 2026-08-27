@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url';
+
 // Всё, что меняется при переезде между хостингами и аккаунтами, живёт здесь.
 // В коде не должно быть ни одного захардкоженного адреса или пути.
 export const config = {
@@ -9,11 +11,19 @@ export const config = {
 
   // Каталог хранения КП. На Beget VPS удобно вынести за пределы каталога с
   // кодом, чтобы деплой не затирал данные: DATA_DIR=/var/lib/kp-ae.
-  dataDir: process.env.DATA_DIR || new URL('./data', import.meta.url).pathname,
+  dataDir: process.env.DATA_DIR || fileURLToPath(new URL('./data', import.meta.url)),
 
   // Puppeteer на VPS обычно ходит в системный chromium, чтобы не тащить
   // свою копию при каждом деплое: CHROMIUM_PATH=/usr/bin/chromium.
   chromiumPath: process.env.CHROMIUM_PATH || null,
+
+  // Доступ к форме и API. Страница счёта и PDF остаются публичными —
+  // по ссылке их открывает клиент.
+  auth: {
+    user: process.env.AUTH_USER || 'manager',
+    password: process.env.AUTH_PASSWORD || '',
+    disabled: process.env.AUTH_DISABLED === '1'
+  },
 
   // Битрикс24: подключения пока нет, заложена только точка входа.
   bitrix: {

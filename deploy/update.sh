@@ -1,11 +1,22 @@
 #!/usr/bin/env bash
-# Обновление уже развёрнутого приложения.
+# Обновление уже развёрнутого приложения. Запускать от root.
 set -euo pipefail
 
-cd /opt/kp-ae
+APP_DIR=/opt/kp-ae
+PORT="$(grep '^PORT=' /etc/kp-ae.env | cut -d= -f2- || echo 3000)"
+
+cd "$APP_DIR"
 git pull --ff-only
-PUPPETEER_SKIP_DOWNLOAD=true npm ci --omit=dev
+
+if grep -q '^CHROMIUM_PATH=/opt/chrome' /etc/kp-ae.env; then
+  npm ci --omit=dev
+else
+  PUPPETEER_SKIP_DOWNLOAD=true npm ci --omit=dev
+fi
+
 npm test
-sudo systemctl restart kp-ae
-sleep 2
-curl -fsS http://127.0.0.1:3000/healthz && echo " — сервис поднялся"
+
+chown -R kpae:kpae "$APP_DIR"
+systemctl restart kp-ae
+sleep 3
+curl -fsS "http://127.0.0.1:$PORT/healthz" && echo " — сервис поднялся"

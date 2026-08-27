@@ -1,6 +1,8 @@
 'use strict';
 
-var ref = { companies: [], paymentTerms: [], deliveryTerms: [], vatRates: [], currencies: [], catalog: [] };
+var ref = { companies: [], paymentTerms: [], deliveryTerms: [], vatRates: [],
+            currencies: [], catalog: [], units: ['шт.'], managers: [] };
+var lastPreviewHtml = '';
 var editingId = null;
 var previewTimer = null;
 // Номер, поправленный руками, автоподстановка больше не трогает.
@@ -33,6 +35,7 @@ function loadReference() {
     fillSelect($('#vatRate'), data.vatRates.map(function (v) { return { value: String(v), label: v + '%' }; }));
     refreshCurrencies();
     refreshCatalog();
+    refreshManagers();
     onCompanyChange();
     onPaymentChange();
   });
@@ -43,6 +46,26 @@ function refreshCurrencies() {
   fillSelect($('#currency'), ref.currencies.map(function (c) {
     return { value: c.code, label: c.label + ' (' + c.code + ')' };
   }), current || 'RUB');
+}
+
+function refreshManagers() {
+  var list = $('#managers-list');
+  list.innerHTML = '';
+  ref.managers.forEach(function (manager) {
+    var o = document.createElement('option');
+    o.value = manager.name;
+    list.appendChild(o);
+  });
+}
+
+// Единицы измерения приходят справочником с сервера, «шт.» — по умолчанию.
+function unitOptions(current) {
+  var units = (ref.units && ref.units.length) ? ref.units : ['шт.'];
+  var selected = current || units[0];
+  return units.map(function (unit) {
+    return '<option value="' + esc(unit) + '"' +
+      (unit === selected ? ' selected' : '') + '>' + esc(unit) + '</option>';
+  }).join('');
 }
 
 function refreshCatalog() {
@@ -82,6 +105,8 @@ function onCompanyChange() {
   // Нумерация сквозная в пределах компании, поэтому при смене поставщика
   // номер пересчитывается — если менеджер не вписал свой.
   fillNextNumber();
+  // Основание печатается только в счетах ООО.
+  $('#basisWrap').hidden = company.id !== 'ooo';
   $('#company-hint').textContent =
     'Коэффициент ' + company.coefficient + ', НДС ' + company.vatRate + '% (в том числе). ' +
     (company.includeLogistics
@@ -142,7 +167,7 @@ function itemTemplate(data) {
     '<div class="item__grid">' +
       '<label class="span2">Наименование<input data-field="name" list="catalog-list" value="' + esc(data.name) + '"></label>' +
       '<label>Артикул<input data-field="sku" value="' + esc(data.sku) + '"></label>' +
-      '<label>Ед.<input data-field="unit" value="' + esc(data.unit || 'шт.') + '"></label>' +
+      '<label>Ед.<select data-field="unit">' + unitOptions(data.unit) + '</select></label>' +
       '<label>Срок поставки<select data-field="leadMode">' +
         '<option value="weeks">Недель (1–12)</option>' +
         '<option value="range">Диапазон от–до</option>' +
@@ -242,7 +267,23 @@ function schedulePreview() {
   previewTimer = setTimeout(preview, 250);
 }
 
+// Печатная форма под формой ввода. Обновляем только при реальном изменении
+// разметки: иначе iframe перерисовывается на каждое нажатие и мигает.
+function updatePreview() {
+  fetch('/api/preview/html', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(collect())
+  }).then(function (r) { return r.text(); }).then(function (html) {
+    if (html !== lastPreviewHtml) {
+      lastPreviewHtml = html;
+      $('#preview-frame').srcdoc = html;
+    }
+  });
+}
+
 function preview() {
+  updatePreview();
   fetch('/api/preview', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -413,6 +454,19 @@ function addCurrency() {
   });
 }
 
+// Тот же формат, что и на сервере: показываем результат сразу, не дожидаясь
+// сохранения, чтобы менеджер видел, каким номер уйдёт в документ.
+function formatPhoneField(el) {
+  var raw = String(el.value || '').trim();
+  var digits = raw.replace(/\D/g, '');
+  if (!digits) { el.value = ''; return; }
+  if (digits.charAt(0) === '8') { digits = '7' + digits.slice(1); }
+  if (digits.length === 10) { digits = '7' + digits; }
+  if (digits.charAt(0) !== '7' || digits.length !== 11) { return; }
+  el.value = '+7 (' + digits.slice(1, 4) + ') ' + digits.slice(4, 7) +
+    '-' + digits.slice(7, 9) + '-' + digits.slice(9, 11);
+}
+
 // --- Привязки -----------------------------------------------------------
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -470,6 +524,24 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 
   $('#number').addEventListener('input', function () { numberTouched = true; });
+
+  // Выбрали известного менеджера — подставляем его телефон и почту.
+  $('#managerName').addEventListener('change', function () {
+    var match = ref.managers.filter(function (m) { return m.name === this.value; }, this)[0];
+    if (!match) { return; }
+    var phone = document.querySelector('[name="manager.phone"]');
+    var email = document.querySelector('[name="manager.email"]');
+    if (!phone.value) { phone.value = match.phone || ''; }
+    if (!email.value) { email.value = match.email || ''; }
+    schedulePreview();
+  });
+  Array.prototype.forEach.call(
+    document.querySelectorAll('input[name="client.phone"], input[name="manager.phone"]'),
+    function (el) {
+      el.addEventListener('blur', function () { formatPhoneField(el); schedulePreview(); });
+    }
+  );
+
   $('#form').addEventListener('input', schedulePreview);
   $('#form').addEventListener('submit', function (ev) { ev.preventDefault(); save(); });
 

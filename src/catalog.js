@@ -9,14 +9,15 @@ import { BASE_CURRENCIES } from './model.js';
 
 const catalogPath = join(config.dataDir, 'catalog.json');
 
-const EMPTY = { items: [], currencies: [] };
+const EMPTY = { items: [], currencies: [], managers: [] };
 
 async function read() {
   try {
     const parsed = JSON.parse(await readFile(catalogPath, 'utf8'));
     return {
       items: Array.isArray(parsed.items) ? parsed.items : [],
-      currencies: Array.isArray(parsed.currencies) ? parsed.currencies : []
+      currencies: Array.isArray(parsed.currencies) ? parsed.currencies : [],
+      managers: Array.isArray(parsed.managers) ? parsed.managers : []
     };
   } catch (e) {
     if (e.code === 'ENOENT') {
@@ -127,4 +128,30 @@ export async function addCurrency(code, label) {
     await write(data);
   }
   return listCurrencies();
+}
+
+
+// Менеджеры: тот же принцип, что и с номенклатурой — кто выписал счёт хоть
+// раз, тот дальше выбирается из списка, а не набирается заново.
+export async function listManagers() {
+  const { managers } = await read();
+  return managers.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+}
+
+export async function rememberManager(manager) {
+  const name = String(manager?.name || '').trim();
+  if (!name) {
+    return;
+  }
+  const data = await read();
+  const key = name.toLowerCase();
+  const rest = data.managers.filter((m) => m.name.trim().toLowerCase() !== key);
+  rest.push({
+    name,
+    phone: String(manager.phone || '').trim(),
+    email: String(manager.email || '').trim(),
+    usedAt: new Date().toISOString()
+  });
+  data.managers = rest;
+  await write(data);
 }

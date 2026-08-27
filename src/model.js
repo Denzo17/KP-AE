@@ -30,6 +30,9 @@ export const BASE_CURRENCIES = [
 
 export const VAT_RATES = [22, 5, 0];
 
+// Единицы измерения позиции. Штуки — по умолчанию.
+export const UNITS = ['шт.', 'компл.', 'м', 'л'];
+
 export function paymentTerm(id) {
   return PAYMENT_TERMS.find((t) => t.id === id) || PAYMENT_TERMS[0];
 }
@@ -51,6 +54,27 @@ function num(value, fallback = 0) {
 
 function str(value) {
   return String(value ?? '').trim();
+}
+
+// Телефон приводим к +7 (XXX) XXX-XX-XX. Ввести можно как угодно — через
+// восьмёрку, без скобок, с пробелами. Непохожее на российский номер
+// (например, зарубежный) оставляем как есть, а не ломаем.
+export function formatPhone(value) {
+  const raw = String(value ?? '').trim();
+  let digits = raw.replace(/\D/g, '');
+  if (!digits) {
+    return '';
+  }
+  if (digits[0] === '8') {
+    digits = '7' + digits.slice(1);
+  }
+  if (digits.length === 10) {
+    digits = '7' + digits;
+  }
+  if (digits[0] !== '7' || digits.length !== 11) {
+    return raw;
+  }
+  return `+7 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7, 9)}-${digits.slice(9, 11)}`;
 }
 
 function round2(value) {
@@ -95,11 +119,13 @@ export function normalizeInvoice(body = {}) {
       inn: str(body.client?.inn),
       address: str(body.client?.address),
       contact: str(body.client?.contact),
-      phone: str(body.client?.phone),
+      phone: formatPhone(body.client?.phone),
       email: str(body.client?.email)
     },
 
-    basis: str(body.basis),
+    // Основание печатается только в счетах ООО, у ИП его в форме нет —
+    // чистим здесь, чтобы значение не утекло при смене компании.
+    basis: company.id === 'ooo' ? str(body.basis) : '',
 
     paymentTerms: str(body.paymentTerms) || 'prepay100',
     paymentTermsCustom: str(body.paymentTermsCustom),
@@ -108,7 +134,7 @@ export function normalizeInvoice(body = {}) {
     deliveryTermsCustom: str(body.deliveryTermsCustom),
 
     deliveryTime: str(body.deliveryTime),
-    offerValidDays: Math.max(Math.round(num(body.offerValidDays, 15)), 0),
+    offerValidDays: Math.max(Math.round(num(body.offerValidDays, 30)), 0),
     warrantyMonths: Math.max(Math.round(num(body.warrantyMonths, 12)), 0),
 
     currency: str(body.currency).toUpperCase() || 'RUB',
@@ -136,7 +162,12 @@ export function normalizeInvoice(body = {}) {
       }))
       .filter((item) => item.name !== ''),
 
-    contacts: str(body.contacts),
+    // Менеджер выбирается из справочника; введённый вручную запоминается.
+    manager: {
+      name: str(body.manager?.name),
+      phone: formatPhone(body.manager?.phone),
+      email: str(body.manager?.email)
+    },
     notes: str(body.notes)
   };
 }

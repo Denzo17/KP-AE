@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { mkdir, readFile, writeFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { config } from '../config.js';
+import { normalizeInvoice } from './model.js';
 
 // Файловое хранилище счетов: один счёт — один JSON. Переезд между серверами
 // сводится к копированию каталога data. Если понадобится поиск и фильтрация,
@@ -30,12 +31,24 @@ export async function saveInvoice(data) {
   return record;
 }
 
+// Записи, сохранённые более ранней версией, могут не иметь появившихся
+// позже полей. Прогоняем прочитанное через нормализацию, иначе старый счёт
+// роняет страницу на первом же обращении к новому полю.
+function hydrate(raw) {
+  return {
+    ...normalizeInvoice(raw),
+    id: raw.id,
+    createdAt: raw.createdAt,
+    updatedAt: raw.updatedAt || null
+  };
+}
+
 export async function loadInvoice(id) {
   if (!isValidId(id)) {
     return null;
   }
   try {
-    return JSON.parse(await readFile(pathFor(id), 'utf8'));
+    return hydrate(JSON.parse(await readFile(pathFor(id), 'utf8')));
   } catch (err) {
     if (err.code === 'ENOENT') {
       return null;
@@ -65,7 +78,7 @@ export async function listInvoices() {
   await mkdir(dir, { recursive: true });
   const files = (await readdir(dir)).filter((f) => f.endsWith('.json'));
   const records = await Promise.all(
-    files.map(async (f) => JSON.parse(await readFile(join(dir, f), 'utf8')))
+    files.map(async (f) => hydrate(JSON.parse(await readFile(join(dir, f), 'utf8'))))
   );
   return records.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
 }

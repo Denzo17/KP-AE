@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeInvoice, calculate, validate, leadTimeLabel } from '../src/model.js';
+import { normalizeInvoice, calculate, validate, leadTimeLabel, formatPhone, UNITS } from '../src/model.js';
 import { amountInWords, plural } from '../src/amount-in-words.js';
 
 // Базовый счёт: закуп 100 юаней по курсу 12, доставка 200, страховка 50,
@@ -130,7 +130,7 @@ test('пустые поля берут значение по умолчанию,
     rate: '', offerValidDays: '', warrantyMonths: '', vatRate: '', items: []
   });
   assert.equal(inv.vatRate, 5);
-  assert.equal(inv.offerValidDays, 15);
+  assert.equal(inv.offerValidDays, 30);
   assert.equal(inv.warrantyMonths, 12);
 });
 
@@ -199,4 +199,39 @@ test('склонение по числу учитывает 11–19', () => {
   assert.equal(plural(102, forms), 'рубля');
   assert.equal(plural(112, forms), 'рублей'); // 12 попадает в 11–19
   assert.equal(plural(5, forms), 'рублей');
+});
+
+test('телефон приводится к российскому формату', () => {
+  assert.equal(formatPhone('89211234567'), '+7 (921) 123-45-67');
+  assert.equal(formatPhone('9211234567'), '+7 (921) 123-45-67');
+  assert.equal(formatPhone('+7 921 123 45 67'), '+7 (921) 123-45-67');
+  assert.equal(formatPhone('8(921)123-45-67'), '+7 (921) 123-45-67');
+  assert.equal(formatPhone(''), '');
+});
+
+test('зарубежный номер не ломается', () => {
+  assert.equal(formatPhone('+380501234567'), '+380501234567');
+});
+
+test('телефоны клиента и менеджера нормализуются', () => {
+  const inv = normalizeInvoice({
+    company: 'ip',
+    client: { name: 'X', phone: '89211234567' },
+    manager: { name: 'Иванов', phone: '9219999999', email: 'i@example.ru' },
+    items: []
+  });
+  assert.equal(inv.client.phone, '+7 (921) 123-45-67');
+  assert.equal(inv.manager.phone, '+7 (921) 999-99-99');
+  assert.equal(inv.manager.name, 'Иванов');
+});
+
+test('основание остаётся только у ООО', () => {
+  assert.equal(normalizeInvoice({ company: 'ooo', basis: 'Договор 5', items: [] }).basis, 'Договор 5');
+  assert.equal(normalizeInvoice({ company: 'ip', basis: 'Договор 5', items: [] }).basis, '');
+});
+
+test('единицы измерения заданы справочником, по умолчанию штуки', () => {
+  assert.deepEqual(UNITS, ['шт.', 'компл.', 'м', 'л']);
+  const inv = normalizeInvoice({ company: 'ip', items: [{ name: 'A', qty: 1 }] });
+  assert.equal(inv.items[0].unit, 'шт.');
 });

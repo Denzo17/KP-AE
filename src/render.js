@@ -60,10 +60,6 @@ export function renderInvoice(invoice) {
     ? `${invoice.offerValidDays} дн. с даты счёта`
     : '';
 
-  const currencyNote = invoice.currency === 'RUB'
-    ? 'Оплата счёта производится в рублях'
-    : `Оплата счёта производится в рублях. Расчёт по курсу ${money.format(r.rate)} ₽ за 1 ${e(invoice.currency)}`;
-
   return `<!doctype html>
 <html lang="ru">
 <head>
@@ -178,9 +174,8 @@ export function renderInvoice(invoice) {
       ${conditionRow('Срок поставки:', invoice.deliveryTime)}
       ${conditionRow('Срок действия счёта:', validUntil)}
       ${conditionRow('Условия поставки:', deliveryLabel(invoice))}
-      ${conditionRow('Валюта оплаты:', currencyNote)}
       ${conditionRow('Гарантия на оборудование:', invoice.warrantyMonths ? `${invoice.warrantyMonths} мес.` : '')}
-      ${conditionRow('Контакты:', invoice.contacts)}
+      ${conditionRow('Менеджер:', [invoice.manager.name, invoice.manager.phone, invoice.manager.email].filter(Boolean).join(', '))}
     </div>
 
     ${invoice.notes ? `<div class="notes">${e(invoice.notes)}</div>` : ''}

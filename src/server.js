@@ -4,12 +4,15 @@ import { config } from '../config.js';
 import { COMPANY_LIST, COMPANIES } from './companies.js';
 import {
   normalizeInvoice, calculate, validate,
-  PAYMENT_TERMS, DELIVERY_TERMS, VAT_RATES
+  PAYMENT_TERMS, DELIVERY_TERMS, VAT_RATES, UNITS
 } from './model.js';
 import { renderInvoice } from './render.js';
 import { htmlToPdf, closeBrowser, checkChromium } from './pdf.js';
 import { saveInvoice, loadInvoice, updateInvoice, listInvoices } from './storage.js';
-import { listItems, rememberItems, importItems, parseCatalogCsv, listCurrencies, addCurrency } from './catalog.js';
+import {
+  listItems, rememberItems, importItems, parseCatalogCsv,
+  listCurrencies, addCurrency, listManagers, rememberManager
+} from './catalog.js';
 import { nextNumber } from './numbering.js';
 import { authMiddleware, assertAuthConfigured } from './auth.js';
 import { bitrix } from './bitrix.js';
@@ -65,6 +68,8 @@ app.get('/api/reference', asyncRoute(async (req, res) => {
     paymentTerms: PAYMENT_TERMS,
     deliveryTerms: DELIVERY_TERMS,
     vatRates: VAT_RATES,
+    units: UNITS,
+    managers: await listManagers(),
     currencies: await listCurrencies(),
     catalog: await listItems(),
     bitrixEnabled: bitrix.enabled
@@ -93,6 +98,12 @@ app.post('/api/preview', (req, res) => {
   res.json({ errors: validate(invoice), totals: calculate(invoice), invoice });
 });
 
+// Готовый вид документа прямо во время заполнения: форма показывает его
+// под собой, чтобы не приходилось сохранять счёт ради того, чтобы взглянуть.
+app.post('/api/preview/html', (req, res) => {
+  res.type('html').send(renderInvoice(normalizeInvoice(req.body)));
+});
+
 // --- Счета --------------------------------------------------------------
 
 app.get('/api/invoices', asyncRoute(async (req, res) => {
@@ -117,8 +128,9 @@ app.post('/api/invoices', asyncRoute(async (req, res) => {
     return res.status(400).json({ errors });
   }
   const saved = await saveInvoice(invoice);
-  // Введённые вручную позиции запоминаются в справочнике.
+  // Введённые вручную позиции и менеджер запоминаются в справочнике.
   await rememberItems(invoice.items);
+  await rememberManager(invoice.manager);
   res.status(201).json({ id: saved.id, url: webUrl(saved.id), pdf: pdfUrl(saved.id) });
 }));
 
@@ -141,6 +153,7 @@ app.put('/api/invoices/:id', asyncRoute(async (req, res) => {
     return res.status(404).json({ errors: ['Счёт не найден.'] });
   }
   await rememberItems(invoice.items);
+  await rememberManager(invoice.manager);
   res.json({ id: saved.id, url: webUrl(saved.id), pdf: pdfUrl(saved.id) });
 }));
 

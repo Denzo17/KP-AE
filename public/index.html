@@ -29,7 +29,7 @@
         <label>Дата документа
           <input type="date" name="docDate" id="docDate">
         </label>
-        <label>Основание
+        <label id="basisWrap">Основание
           <input name="basis" placeholder="Договор, спецификация">
         </label>
       </div>
@@ -49,13 +49,13 @@
           <input name="client.contact">
         </label>
         <label>Телефон
-          <input name="client.phone">
+          <input name="client.phone" placeholder="+7 (999) 123-45-67">
         </label>
         <label>E-mail
           <input name="client.email">
         </label>
-        <label class="span2">Адрес
-          <input name="client.address">
+        <label class="span2">Юридический адрес
+          <input name="client.address" placeholder="Индекс, город, улица, дом">
         </label>
       </div>
     </section>
@@ -73,7 +73,7 @@
           <input name="deliveryTime" placeholder="10–12 недель">
         </label>
         <label>Оферта действует, дней
-          <input type="number" name="offerValidDays" value="15" min="0">
+          <input type="number" name="offerValidDays" value="30" min="0">
         </label>
         <label>Условия поставки
           <select name="deliveryTerms" id="deliveryTerms"></select>
@@ -129,15 +129,22 @@
     </section>
 
     <section class="card">
-      <h2>Контакты и примечание</h2>
+      <h2>Менеджер и примечание</h2>
       <div class="grid">
-        <label class="span2">Контакты
-          <input name="contacts" placeholder="Менеджер, телефон, почта">
+        <label class="span2">Менеджер
+          <input name="manager.name" id="managerName" list="managers-list" placeholder="Начни вводить — подставится из списка">
+        </label>
+        <label>Телефон
+          <input name="manager.phone" placeholder="+7 (999) 123-45-67">
+        </label>
+        <label>E-mail
+          <input name="manager.email">
         </label>
         <label class="span2">Примечание
           <textarea name="notes" rows="3"></textarea>
         </label>
       </div>
+      <datalist id="managers-list"></datalist>
     </section>
   </form>
 
@@ -151,6 +158,14 @@
     </div>
   </aside>
 </main>
+
+<section class="preview">
+  <div class="preview__head">
+    <h2>Предпросмотр документа</h2>
+    <span class="preview__hint">обновляется по мере заполнения, сохранять не нужно</span>
+  </div>
+  <iframe id="preview-frame" title="Предпросмотр счёта"></iframe>
+</section>
 
 <div class="modal" id="modal" hidden>
   <div class="modal__box">

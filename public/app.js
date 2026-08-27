@@ -3,6 +3,7 @@
 var ref = { companies: [], paymentTerms: [], deliveryTerms: [], vatRates: [],
             currencies: [], catalog: [], units: ['шт.'], managers: [] };
 var lastPreviewHtml = '';
+var me = { login: '', name: '', role: 'manager' };
 var editingId = null;
 var previewTimer = null;
 // Номер, поправленный руками, автоподстановка больше не трогает.
@@ -10,6 +11,19 @@ var numberTouched = false;
 
 var $ = function (sel, root) { return (root || document).querySelector(sel); };
 var money = new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// --- Текущий пользователь ------------------------------------------------
+
+function loadMe() {
+  return fetch('/api/me').then(function (r) { return r.json(); }).then(function (data) {
+    me = data;
+    var role = data.role === 'admin' ? 'администратор' : 'менеджер';
+    $('#whoami').textContent = (data.name || data.login) + ' · ' + role;
+    // Управление учётными записями доступно только администратору. Сервер
+    // проверяет это независимо — кнопка лишь убирает лишнее с глаз.
+    $('#btn-users').hidden = data.role !== 'admin';
+  });
+}
 
 // --- Справочники --------------------------------------------------------
 
@@ -360,8 +374,10 @@ function openList() {
     if (!list.length) {
       $('#modal-body').innerHTML = '<p class="hint">Пока ничего не сохранено.</p>';
     } else {
+      var isAdmin = me.role === 'admin';
       $('#modal-body').innerHTML =
         '<table class="list"><thead><tr><th>№</th><th>Дата</th><th>Клиент</th><th>Компания</th>' +
+        (isAdmin ? '<th>Автор</th>' : '') +
         '<th class="num">Сумма</th><th></th></tr></thead><tbody>' +
         list.map(function (inv) {
           return '<tr>' +
@@ -369,6 +385,7 @@ function openList() {
             '<td>' + esc(inv.docDate) + '</td>' +
             '<td>' + esc(inv.client) + '</td>' +
             '<td>' + esc(inv.company) + '</td>' +
+            (isAdmin ? '<td>' + esc(inv.owner || '—') + '</td>' : '') +
             '<td class="num">' + money.format(inv.total) + ' ₽</td>' +
             '<td class="num">' +
               '<button type="button" class="btn btn--ghost" data-edit="' + inv.id + '">Редактировать</button> ' +
@@ -399,6 +416,84 @@ function loadForEdit(id) {
     $('#modal').hidden = true;
     $('#result').innerHTML = '<div class="ok">Редактируется счёт по ссылке ' + esc(data.url) + '</div>';
     schedulePreview();
+  });
+}
+
+// --- Пользователи (администратор) ----------------------------------------
+
+function openUsers() {
+  fetch('/api/users').then(function (r) { return r.json(); }).then(function (data) {
+    $('#modal-title').textContent = 'Пользователи';
+    var roleOptions = data.roles.map(function (r) {
+      return '<option value="' + esc(r.id) + '">' + esc(r.label) + '</option>';
+    }).join('');
+
+    var rows = data.users.map(function (u) {
+      var label = (data.roles.filter(function (r) { return r.id === u.role; })[0] || {}).label || u.role;
+      return '<tr>' +
+        '<td>' + esc(u.login) + '</td>' +
+        '<td>' + esc(u.name || '—') + '</td>' +
+        '<td>' + esc(label) + '</td>' +
+        '<td class="num">' +
+          '<button type="button" class="btn btn--ghost" data-passwd="' + esc(u.login) + '">Сменить пароль</button> ' +
+          (u.login === me.login ? '' :
+            '<button type="button" class="btn btn--icon" data-remove="' + esc(u.login) + '">Удалить</button>') +
+        '</td></tr>';
+    }).join('');
+
+    $('#modal-body').innerHTML =
+      (data.users.length ? '' :
+        '<div class="notice">Пользователей ещё нет — работает запасная учётная запись из ' +
+        '<code>/etc/kp-ae.env</code>. Как только вы заведёте первого пользователя, ' +
+        'она перестанет действовать, поэтому начните с администратора для себя.</div>') +
+      '<table class="list"><thead><tr><th>Логин</th><th>Имя</th><th>Роль</th><th></th></tr></thead>' +
+      '<tbody>' + rows + '</tbody></table>' +
+      '<div class="userform">' +
+        '<label>Логин<input id="new-login" placeholder="ivan"></label>' +
+        '<label>Имя<input id="new-name" placeholder="Иван Петров"></label>' +
+        '<label>Роль<select id="new-role">' + roleOptions + '</select></label>' +
+        '<label>Пароль<input id="new-password" placeholder="оставьте пустым — сгенерируется"></label>' +
+        '<div class="wide"><button type="button" class="btn btn--primary" id="btn-add-user">Добавить пользователя</button></div>' +
+        '<div class="wide" id="user-result"></div>' +
+      '</div>';
+    // По умолчанию — наименьшие права: администратора назначают осознанно.
+    $('#new-role').value = 'manager';
+    $('#modal').hidden = false;
+  });
+}
+
+function randomPassword() {
+  var alphabet = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  var out = '';
+  var bytes = new Uint8Array(14);
+  window.crypto.getRandomValues(bytes);
+  for (var i = 0; i < bytes.length; i++) {
+    out += alphabet.charAt(bytes[i] % alphabet.length);
+  }
+  return out;
+}
+
+function saveUser(payload, generated) {
+  return fetch('/api/users', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  }).then(function (r) {
+    return r.json().then(function (data) { return { ok: r.ok, data: data }; });
+  }).then(function (res) {
+    if (!res.ok) {
+      $('#user-result').innerHTML = '<div class="errors">' +
+        (res.data.errors || ['Не удалось сохранить.']).map(esc).join('<br>') + '</div>';
+      return;
+    }
+    openUsers();
+    // Пароль показываем один раз: на сервере он хранится только хешем и
+    // подсмотреть его потом будет негде.
+    setTimeout(function () {
+      $('#user-result').innerHTML = '<div class="notice">Логин <b>' + esc(payload.login) +
+        '</b>, пароль <b>' + esc(generated) + '</b><br>Передайте их сотруднику — ' +
+        'больше пароль нигде не отобразится.</div>';
+    }, 100);
   });
 }
 
@@ -470,7 +565,7 @@ function formatPhoneField(el) {
 // --- Привязки -----------------------------------------------------------
 
 document.addEventListener('DOMContentLoaded', function () {
-  loadReference().then(resetForm);
+  loadMe().then(loadReference).then(resetForm);
 
   $('#company').addEventListener('change', function () { onCompanyChange(); syncItemVisibility(); });
   $('#paymentTerms').addEventListener('change', onPaymentChange);
@@ -485,6 +580,7 @@ document.addEventListener('DOMContentLoaded', function () {
   $('#btn-save').addEventListener('click', save);
   $('#btn-new').addEventListener('click', resetForm);
   $('#btn-list').addEventListener('click', openList);
+  $('#btn-users').addEventListener('click', openUsers);
   $('#modal-close').addEventListener('click', function () { $('#modal').hidden = true; });
   $('#btn-add-currency').addEventListener('click', addCurrency);
   $('#btn-import').addEventListener('click', function () { $('#import-file').click(); });
@@ -546,6 +642,34 @@ document.addEventListener('DOMContentLoaded', function () {
   $('#form').addEventListener('submit', function (ev) { ev.preventDefault(); save(); });
 
   $('#modal-body').addEventListener('click', function (ev) {
-    if (ev.target.dataset.edit) { loadForEdit(ev.target.dataset.edit); }
+    var t = ev.target;
+    if (t.dataset.edit) { loadForEdit(t.dataset.edit); return; }
+
+    if (t.id === 'btn-add-user') {
+      var password = $('#new-password').value.trim() || randomPassword();
+      saveUser({
+        login: $('#new-login').value.trim(),
+        name: $('#new-name').value.trim(),
+        role: $('#new-role').value,
+        password: password
+      }, password);
+      return;
+    }
+
+    if (t.dataset.passwd) {
+      var fresh = randomPassword();
+      saveUser({ login: t.dataset.passwd, password: fresh }, fresh);
+      return;
+    }
+
+    if (t.dataset.remove) {
+      if (!window.confirm('Удалить пользователя ' + t.dataset.remove + '?')) { return; }
+      fetch('/api/users/' + encodeURIComponent(t.dataset.remove), { method: 'DELETE' })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+        .then(function (res) {
+          if (!res.ok) { window.alert((res.data.errors || ['Не удалось удалить.']).join('\n')); }
+          openUsers();
+        });
+    }
   });
 });

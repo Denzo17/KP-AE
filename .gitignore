@@ -3,3 +3,4 @@ data/kp/*.json
 .env
 *.log
 data/catalog.json
+data/users.json

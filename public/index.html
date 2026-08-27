@@ -10,8 +10,11 @@
 <header class="topbar">
   <h1>Формирование счёта</h1>
   <div class="topbar__actions">
+    <span class="topbar__user" id="whoami"></span>
+    <button type="button" id="btn-users" class="btn btn--ghost" hidden>Пользователи</button>
     <button type="button" id="btn-list" class="btn btn--ghost">Сохранённые счета</button>
     <button type="button" id="btn-new" class="btn btn--ghost">Новый счёт</button>
+    <a href="/logout" class="btn btn--ghost">Выйти</a>
   </div>
 </header>
 
@@ -164,7 +167,10 @@
     <h2>Предпросмотр документа</h2>
     <span class="preview__hint">обновляется по мере заполнения, сохранять не нужно</span>
   </div>
-  <iframe id="preview-frame" title="Предпросмотр счёта"></iframe>
+  <!-- sandbox без allow-scripts: предпросмотр вставляется через srcdoc и
+       иначе выполнялся бы в источнике самого приложения. Скриптов в
+       печатной форме нет, поэтому ничего не теряем. -->
+  <iframe id="preview-frame" title="Предпросмотр счёта" sandbox=""></iframe>
 </section>
 
 <div class="modal" id="modal" hidden>

@@ -23,10 +23,12 @@ function pathFor(id) {
   return join(dir, `${id}.json`);
 }
 
-export async function saveInvoice(data) {
+export async function saveInvoice(data, owner) {
   await mkdir(dir, { recursive: true });
   const id = newId();
-  const record = { ...data, id, createdAt: new Date().toISOString() };
+  // Владелец берётся из сессии, а не из тела запроса: иначе менеджер мог бы
+  // записать счёт на чужое имя, подставив поле в JSON.
+  const record = { ...data, id, owner: owner || null, createdAt: new Date().toISOString() };
   await writeFile(pathFor(id), JSON.stringify(record, null, 2), 'utf8');
   return record;
 }
@@ -38,6 +40,7 @@ function hydrate(raw) {
   return {
     ...normalizeInvoice(raw),
     id: raw.id,
+    owner: raw.owner || null,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt || null
   };
@@ -67,6 +70,8 @@ export async function updateInvoice(id, data) {
   const record = {
     ...data,
     id: existing.id,
+    // Владелец счёта при правках не меняется.
+    owner: existing.owner || null,
     createdAt: existing.createdAt,
     updatedAt: new Date().toISOString()
   };

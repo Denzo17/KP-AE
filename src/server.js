@@ -14,7 +14,8 @@ import {
   listCurrencies, addCurrency, listManagers, rememberManager
 } from './catalog.js';
 import { nextNumber } from './numbering.js';
-import { authMiddleware, assertAuthConfigured } from './auth.js';
+import { authMiddleware, assertAuthConfigured, requireAdmin } from './auth.js';
+import { listUsers, upsertUser, removeUser, ROLES, ROLE_LABELS } from './users.js';
 import { bitrix } from './bitrix.js';
 
 try {
@@ -62,6 +63,52 @@ function asyncRoute(handler) {
 
 // --- Справочники для формы ---------------------------------------------
 
+app.get('/api/me', (req, res) => {
+  res.json({ login: req.user.login, name: req.user.name, role: req.user.role });
+});
+
+// У HTTP Basic нет штатного выхода: браузер помнит пару логин-пароль до
+// закрытия. Ответ 401 заставляет его спросить заново.
+app.get('/logout', (req, res) => {
+  res.setHeader('WWW-Authenticate', 'Basic realm="KP-AE", charset="UTF-8"');
+  res.status(401).send('Вы вышли. Обновите страницу, чтобы войти под другой учётной записью.');
+});
+
+// --- Пользователи (только администратор) --------------------------------
+
+app.get('/api/users', requireAdmin, asyncRoute(async (req, res) => {
+  res.json({ users: await listUsers(), roles: ROLES.map((id) => ({ id, label: ROLE_LABELS[id] })) });
+}));
+
+app.post('/api/users', requireAdmin, asyncRoute(async (req, res) => {
+  try {
+    await upsertUser({
+      login: req.body?.login,
+      password: req.body?.password,
+      role: req.body?.role,
+      name: req.body?.name
+    });
+    res.json({ users: await listUsers() });
+  } catch (err) {
+    res.status(400).json({ errors: [err.message] });
+  }
+}));
+
+app.delete('/api/users/:login', requireAdmin, asyncRoute(async (req, res) => {
+  if (req.params.login === req.user.login) {
+    return res.status(400).json({ errors: ['Нельзя удалить учётную запись, под которой вы работаете.'] });
+  }
+  try {
+    const removed = await removeUser(req.params.login);
+    if (!removed) {
+      return res.status(404).json({ errors: ['Пользователь не найден.'] });
+    }
+    res.json({ users: await listUsers() });
+  } catch (err) {
+    res.status(400).json({ errors: [err.message] });
+  }
+}));
+
 app.get('/api/reference', asyncRoute(async (req, res) => {
   res.json({
     companies: COMPANY_LIST,
@@ -106,8 +153,13 @@ app.post('/api/preview/html', (req, res) => {
 
 // --- Счета --------------------------------------------------------------
 
+// Менеджер работает только со своими счетами, администратор видит все.
+function visibleTo(user) {
+  return (invoice) => user.role === 'admin' || invoice.owner === user.login;
+}
+
 app.get('/api/invoices', asyncRoute(async (req, res) => {
-  const list = await listInvoices();
+  const list = (await listInvoices()).filter(visibleTo(req.user));
   res.json(list.map((inv) => ({
     id: inv.id,
     number: inv.number,
@@ -115,6 +167,7 @@ app.get('/api/invoices', asyncRoute(async (req, res) => {
     client: inv.client.name,
     company: COMPANIES[inv.company]?.label || inv.company,
     total: calculate(inv).total,
+    owner: inv.owner,
     createdAt: inv.createdAt,
     updatedAt: inv.updatedAt || null,
     url: webUrl(inv.id)
@@ -127,7 +180,7 @@ app.post('/api/invoices', asyncRoute(async (req, res) => {
   if (errors.length) {
     return res.status(400).json({ errors });
   }
-  const saved = await saveInvoice(invoice);
+  const saved = await saveInvoice(invoice, req.user.login);
   // Введённые вручную позиции и менеджер запоминаются в справочнике.
   await rememberItems(invoice.items);
   await rememberManager(invoice.manager);
@@ -136,13 +189,19 @@ app.post('/api/invoices', asyncRoute(async (req, res) => {
 
 app.get('/api/invoices/:id', asyncRoute(async (req, res) => {
   const invoice = await loadInvoice(req.params.id);
-  if (!invoice) {
+  // Чужой счёт для менеджера выглядит как несуществующий: ответ 403 сам по
+  // себе подтвердил бы, что счёт с таким номером есть.
+  if (!invoice || !visibleTo(req.user)(invoice)) {
     return res.status(404).json({ errors: ['Счёт не найден.'] });
   }
   res.json({ invoice, totals: calculate(invoice), url: webUrl(invoice.id), pdf: pdfUrl(invoice.id) });
 }));
 
 app.put('/api/invoices/:id', asyncRoute(async (req, res) => {
+  const existing = await loadInvoice(req.params.id);
+  if (!existing || !visibleTo(req.user)(existing)) {
+    return res.status(404).json({ errors: ['Счёт не найден.'] });
+  }
   const invoice = normalizeInvoice(req.body);
   const errors = validate(invoice);
   if (errors.length) {

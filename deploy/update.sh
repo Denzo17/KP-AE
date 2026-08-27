@@ -16,9 +16,27 @@ git -c safe.directory="$APP_DIR" pull --ff-only
 # поэтому качать его заново при каждом деплое незачем — это ~150 МБ.
 PUPPETEER_SKIP_DOWNLOAD=true npm ci --omit=dev
 
-CHROME="$(grep '^CHROMIUM_PATH=' /etc/kp-ae.env | cut -d= -f2-)"
-if [ ! -x "$CHROME" ]; then
-  echo "ВНИМАНИЕ: браузер по пути $CHROME не найден, PDF работать не будет."
+# Обновление puppeteer может потребовать более свежего Chrome, а простая
+# проверка «файл на месте» этого не ловит. Пробуем реально запустить, и если
+# не выходит — доставляем подходящий браузер прямо здесь.
+export CHROMIUM_PATH="$(grep '^CHROMIUM_PATH=' /etc/kp-ae.env | cut -d= -f2-)"
+if ! node scripts/check-browser.js; then
+  echo "ставлю браузер, подходящий текущей версии puppeteer"
+  npx --yes puppeteer browsers install chrome
+  SRC="$(find /root/.cache/puppeteer -name chrome -type f -perm -u+x | head -1)"
+  if [ -z "$SRC" ]; then
+    echo "не удалось поставить браузер — печать PDF работать не будет"
+    exit 1
+  fi
+  rm -rf /opt/chrome
+  mkdir -p /opt/chrome
+  cp -r /root/.cache/puppeteer/* /opt/chrome/
+  chown -R kpae:kpae /opt/chrome
+  CHROMIUM_PATH="$(find /opt/chrome -name chrome -type f -perm -u+x | head -1)"
+  sed -i "s|^CHROMIUM_PATH=.*|CHROMIUM_PATH=$CHROMIUM_PATH|" /etc/kp-ae.env
+  export CHROMIUM_PATH
+  node scripts/check-browser.js
+  echo "браузер обновлён: $CHROMIUM_PATH"
 fi
 
 npm test

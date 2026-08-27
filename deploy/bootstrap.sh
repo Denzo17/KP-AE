@@ -188,6 +188,8 @@ systemctl is-active --quiet kp-ae && echo "сервис запущен" || { jou
 
 # Пока домена нет — отдаём по IP на 80-м порту, без SSL.
 cat > /etc/nginx/sites-available/kp-ae <<EOF
+server_tokens off;
+
 server {
     listen 80 default_server;
     server_name _;

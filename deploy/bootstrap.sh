@@ -28,6 +28,10 @@ fi
 
 say "2/8 Пакеты"
 export DEBIAN_FRONTEND=noninteractive
+# Ubuntu после обновления пакетов спрашивает, какие службы перезапустить,
+# и на этом вопросе установка встаёт. Отвечаем «все» заранее.
+export NEEDRESTART_MODE=a
+export NEEDRESTART_SUSPEND=1
 apt-get update -qq
 apt-get install -y -qq curl git nginx ca-certificates openssh-client
 

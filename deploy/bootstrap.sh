@@ -30,11 +30,20 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq curl git nginx ca-certificates openssh-client
 
-if ! command -v node >/dev/null || [ "$(node -p 'process.versions.node.split(".")[0]')" -lt 20 ]; then
+node_major() { command -v node >/dev/null && node -p 'process.versions.node.split(".")[0]' || echo 0; }
+
+# Свежие Ubuntu уже везут Node 22+, и репозиторий NodeSource может не иметь
+# сборки под совсем новый релиз. Поэтому сначала штатный пакет.
+if [ "$(node_major)" -lt 20 ]; then
+  apt-get install -y -qq nodejs npm || true
+fi
+if [ "$(node_major)" -lt 20 ]; then
+  echo "штатный пакет не подошёл, ставлю из NodeSource"
   curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
   apt-get install -y -qq nodejs
 fi
-echo "node $(node -v)"
+[ "$(node_major)" -ge 20 ] || { echo "не удалось поставить Node 20+"; exit 1; }
+echo "node $(node -v), npm $(npm -v)"
 
 say "3/8 Шрифты (без них кириллица и ₽ в PDF станут квадратами)"
 apt-get install -y -qq fonts-liberation fonts-dejavu-core
@@ -45,17 +54,40 @@ say "4/8 Chromium"
 # часто не стартует. Поэтому системный берём только если это реальный
 # бинарник, иначе Chrome ставит сам puppeteer.
 CHROMIUM=""
-apt-get install -y -qq chromium 2>/dev/null || apt-get install -y -qq chromium-browser 2>/dev/null || true
-for candidate in /usr/bin/chromium /usr/bin/chromium-browser; do
-  if [ -x "$candidate" ] && ! readlink -f "$candidate" | grep -q snap; then
-    CHROMIUM="$candidate"
-    break
-  fi
-done
-if [ -n "$CHROMIUM" ]; then
-  echo "системный chromium: $CHROMIUM"
+. /etc/os-release
+
+# Ставим по одному: имена библиотек между релизами меняются (libasound2 стал
+# libasound2t64 и т.п.), и один отсутствующий пакет не должен ронять установку.
+install_optional() {
+  for pkg in "$@"; do
+    apt-get install -y -qq "$pkg" 2>/dev/null || true
+  done
+}
+
+if [ "${ID:-}" = "ubuntu" ]; then
+  # В Ubuntu пакет chromium — обёртка над snap: в headless на сервере она
+  # обычно не стартует. Не тратим время, Chrome поставит puppeteer.
+  echo "Ubuntu ${VERSION_ID:-}: системный chromium пропускаю, будет Chrome от puppeteer"
 else
-  echo "системный chromium не годится — Chrome поставит puppeteer на шаге 6"
+  apt-get install -y -qq chromium 2>/dev/null || apt-get install -y -qq chromium-browser 2>/dev/null || true
+  for candidate in /usr/bin/chromium /usr/bin/chromium-browser; do
+    if [ -x "$candidate" ] && ! readlink -f "$candidate" | grep -q snap; then
+      CHROMIUM="$candidate"
+      break
+    fi
+  done
+  [ -n "$CHROMIUM" ] && echo "системный chromium: $CHROMIUM"
+fi
+
+if [ -z "$CHROMIUM" ]; then
+  # Chrome от puppeteer — это только бинарник, системные библиотеки к нему
+  # нужны отдельно, иначе он падает с невнятной ошибкой при первом запуске.
+  echo "ставлю библиотеки, нужные Chrome"
+  install_optional \
+    libnss3 libnspr4 libatk1.0-0t64 libatk1.0-0 libatk-bridge2.0-0t64 libatk-bridge2.0-0 \
+    libcups2t64 libcups2 libdrm2 libgbm1 libpango-1.0-0 libcairo2 libasound2t64 libasound2 \
+    libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libxext6 libx11-6 \
+    libxcb1 libglib2.0-0t64 libglib2.0-0 libdbus-1-3 libexpat1 libudev1
 fi
 
 say "5/8 Пользователь и каталоги"

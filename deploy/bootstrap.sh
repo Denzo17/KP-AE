@@ -188,11 +188,13 @@ systemctl is-active --quiet kp-ae && echo "сервис запущен" || { jou
 
 # Пока домена нет — отдаём по IP на 80-м порту, без SSL.
 cat > /etc/nginx/sites-available/kp-ae <<EOF
-server_tokens off;
-
 server {
     listen 80 default_server;
     server_name _;
+    # Внутри server-блока директива переопределяет общую настройку. На
+    # верхнем уровне файла она ломает конфиг, если nginx.conf уже задал её
+    # сам — в части сборок Ubuntu это так.
+    server_tokens off;
     client_max_body_size 4m;
     location / {
         proxy_pass http://127.0.0.1:$PORT;
@@ -207,7 +209,27 @@ server {
 EOF
 rm -f /etc/nginx/sites-enabled/default
 ln -sf /etc/nginx/sites-available/kp-ae /etc/nginx/sites-enabled/kp-ae
-nginx -t && systemctl reload nginx
+
+# Проверку пишем через if, а не через «nginx -t && reload»: в такой записи
+# set -e не срабатывает на падении левой части, и установка досказывала бы
+# «Готово» с паролем, оставив nginx на старой конфигурации.
+if ! nginx -t; then
+  echo
+  echo "ОШИБКА: nginx не принял конфигурацию (причина выше)."
+  echo "Приложение работает на порту $PORT, но снаружи недоступно."
+  exit 1
+fi
+systemctl reload nginx
+
+# Убеждаемся, что снаружи отвечает именно приложение: 401 — это наш запрос
+# пароля. 200 означал бы, что nginx всё ещё отдаёт страницу по умолчанию.
+STATUS="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/ || echo 000)"
+if [ "$STATUS" != "401" ]; then
+  echo
+  echo "ОШИБКА: по адресу сервера отвечает не приложение (код $STATUS)."
+  echo "Проверьте: nginx -t, systemctl status nginx"
+  exit 1
+fi
 
 say "Готово"
 curl -fsS "http://127.0.0.1:$PORT/healthz" && echo
